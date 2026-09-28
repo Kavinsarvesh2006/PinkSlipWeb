@@ -24,7 +24,9 @@ export async function readAll(table: string) {
     }
 }
 export async function save(table: string, row: Record<string, unknown>, id?: string) {
-    const query = id ? client!.from(table).update(row).eq('id', id) : client!.from(table).insert(row);
+    if (!client) return;
+    const payload = id ? { id, ...row } : { ...row };
+    const query = id ? client.from(table).upsert(payload) : client.from(table).insert(payload);
     const { error } = await query;
     if (error)
         throw error;

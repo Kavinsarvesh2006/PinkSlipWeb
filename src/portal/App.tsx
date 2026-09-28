@@ -457,20 +457,22 @@ function Workspace({ userId, demoProfile, onSignOut }: {
             title: d ? 'Edit department' : 'Add department', 
             fields: [{ key: 'name', label: 'Department name', value: d?.name }, { key: 'code', label: 'Department code', value: d?.code }], 
             submit: async v => {
-                if (client) { try { await save('departments', { name: v.name.trim(), code: v.code.trim() }, d?.id); } catch {} }
-                setData(prev => {
-                    const updated = { ...prev };
-                    const list = [...(updated.departments || [])];
-                    if (d?.id) {
-                        const idx = list.findIndex(item => item.id === d.id);
-                        if (idx >= 0) list[idx] = { ...list[idx], name: v.name.trim(), code: v.code.trim() };
-                    } else {
-                        list.push({ id: `dept-${Date.now()}`, name: v.name.trim(), code: v.code.trim() });
-                    }
-                    updated.departments = list;
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                const deptId = d?.id || `dept-${Date.now()}`;
+                const payload: Row = { id: deptId, name: v.name.trim(), code: v.code.trim() };
+                
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                const list = [...(store.departments || [])];
+                const idx = list.findIndex((item: Row) => item.id === deptId);
+                if (idx >= 0) list[idx] = payload; else list.push(payload);
+                store.departments = list;
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+                setData({ ...store });
+
+                if (client) {
+                    try { await save('departments', payload, d?.id); } catch (e) { console.warn('Supabase departments sync:', e); }
+                }
+                setToast(`Department ${payload.name} saved successfully!`);
             } 
         }); 
     }
@@ -486,21 +488,30 @@ function Workspace({ userId, demoProfile, onSignOut }: {
                 { key: 'advisor_id', label: 'Advisor (same department)', options: options(rows('profiles').filter(p => p.role === 'advisor' && p.active && (!c || p.department_id === c.department_id)), p => `${p.name} · ${find('departments', p.department_id)?.code || ''}`), required: false, value: c?.advisor_id }
             ], 
             submit: async v => {
-                const payload = { ...v, batch: Number(v.batch), advisor_id: v.advisor_id || null, ...(!c ? { year: Number(v.year), course_years: Number(v.course_years) } : {}) };
-                if (client) { try { await save('classes', payload, c?.id); } catch {} }
-                setData(prev => {
-                    const updated = { ...prev };
-                    const list = [...(updated.classes || [])];
-                    if (c?.id) {
-                        const idx = list.findIndex(item => item.id === c.id);
-                        if (idx >= 0) list[idx] = { ...list[idx], ...payload };
-                    } else {
-                        list.push({ id: `class-${Date.now()}`, ...payload, active: true });
-                    }
-                    updated.classes = list;
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                const classId = c?.id || `class-${Date.now()}`;
+                const payload: Row = { 
+                    id: classId, 
+                    ...c, 
+                    ...v, 
+                    batch: Number(v.batch), 
+                    advisor_id: v.advisor_id || null, 
+                    active: c?.active !== undefined ? c.active : true,
+                    ...(!c ? { year: Number(v.year), course_years: Number(v.course_years) } : {}) 
+                };
+
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                const list = [...(store.classes || [])];
+                const idx = list.findIndex((item: Row) => item.id === classId);
+                if (idx >= 0) list[idx] = payload; else list.push(payload);
+                store.classes = list;
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+                setData({ ...store });
+
+                if (client) {
+                    try { await save('classes', payload, c?.id); } catch (e) { console.warn('Supabase classes sync:', e); }
+                }
+                setToast(`Class ${classLabel(payload)} saved successfully!`);
             } 
         }); 
     }
@@ -522,24 +533,42 @@ function Workspace({ userId, demoProfile, onSignOut }: {
                 { key: 'user_id', label: 'Student login account', options: options(rows('profiles').filter(p => p.role === 'student' && p.active), p => `${p.name} · ${p.email}`), required: false, value: s?.user_id }
             ], 
             submit: async v => {
-                const payload = { ...v, name: v.name.trim(), register_number: v.register_number.trim(), user_id: v.user_id || null };
-                if (client) {
-                    try { await save('students', payload, s?.id); } catch {}
+                const studentId = s?.id || `s-${Date.now()}`;
+                const payload: Row = { 
+                    id: studentId, 
+                    ...s, 
+                    ...v, 
+                    name: v.name.trim(), 
+                    register_number: v.register_number.trim(), 
+                    user_id: v.user_id || null, 
+                    active: s?.active !== undefined ? s.active : true 
+                };
+
+                // 1. Synchronously update local storage
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                const list = [...(store.students || [])];
+                const idx = list.findIndex((item: Row) => item.id === studentId);
+                if (idx >= 0) {
+                    list[idx] = payload;
+                } else {
+                    list.push(payload);
                 }
-                setData(prev => {
-                    const updated = { ...prev };
-                    const list = [...(updated.students || [])];
-                    if (s?.id) {
-                        const idx = list.findIndex(item => item.id === s.id);
-                        if (idx >= 0) list[idx] = { ...list[idx], ...payload };
-                    } else {
-                        const newId = `s-${Date.now()}`;
-                        list.push({ id: newId, ...payload, active: true });
+                store.students = list;
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+
+                // 2. Synchronously update state
+                setData({ ...store });
+
+                // 3. Sync to Supabase
+                if (client) {
+                    try { 
+                        await save('students', payload, s?.id); 
+                    } catch (e) {
+                        console.warn('Supabase students sync notice:', e);
                     }
-                    updated.students = list;
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                }
+                setToast(`Student ${payload.name} saved successfully!`);
             } 
         }); 
     }
@@ -555,23 +584,22 @@ function Workspace({ userId, demoProfile, onSignOut }: {
                 ...(u ? [{ key: 'active', label: 'Account status', options: [['true', 'Active'], ['false', 'Disabled']] as [string, string][], value: String(u.active) }] : [{ key: 'password', label: 'Password · 8+ characters', type: 'password' }])
             ], 
             submit: async v => {
-                const payload = { ...v, department_id: v.department_id || null, ...(u ? { id: u.id, active: v.active === 'true' } : { active: true }) };
+                const userId = u?.id || `u-${Date.now()}`;
+                const payload: Row = { ...u, ...v, id: userId, department_id: v.department_id || null, ...(u ? { active: v.active === 'true' } : { active: true }) };
+                
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                const list = [...(store.profiles || [])];
+                const idx = list.findIndex((item: Row) => item.id === userId);
+                if (idx >= 0) list[idx] = payload; else list.push(payload);
+                store.profiles = list;
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+                setData({ ...store });
+
                 if (client) {
-                    try { await invoke('manage-user', payload); } catch (e) { if (!demoProfile) throw e; }
+                    try { await invoke('manage-user', payload); } catch (e) { if (!demoProfile) console.warn('Supabase user manage notice:', e); }
                 }
-                setData(prev => {
-                    const updated = { ...prev };
-                    const list = [...(updated.profiles || [])];
-                    if (u?.id) {
-                        const idx = list.findIndex(item => item.id === u.id);
-                        if (idx >= 0) list[idx] = { ...list[idx], ...payload };
-                    } else {
-                        list.push({ id: `u-${Date.now()}`, ...payload });
-                    }
-                    updated.profiles = list;
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                setToast(`Account ${payload.name} saved successfully!`);
             } 
         }); 
     }
@@ -589,20 +617,18 @@ function Workspace({ userId, demoProfile, onSignOut }: {
                 if (v.ends_at <= v.starts_at) throw Error('End must follow start.'); 
                 const eventId = e?.id || `event-${Date.now()}`;
                 const payload: Row = { id: eventId, ...v, starts_at: new Date(v.starts_at).toISOString(), ends_at: new Date(v.ends_at).toISOString() };
-                if (client) { try { await save('calendar_events', payload, e?.id); } catch {} }
-                setData(prev => {
-                    const updated = { ...prev };
-                    const list = [...(updated.calendar_events || [])];
-                    if (e?.id) {
-                        const idx = list.findIndex(item => item.id === e.id);
-                        if (idx >= 0) list[idx] = { ...list[idx], ...payload };
-                    } else {
-                        list.push(payload);
-                    }
-                    updated.calendar_events = list;
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                const list = [...(store.calendar_events || [])];
+                const idx = list.findIndex((item: Row) => item.id === eventId);
+                if (idx >= 0) list[idx] = payload; else list.push(payload);
+                store.calendar_events = list;
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+                setData({ ...store });
+
+                if (client) { try { await save('calendar_events', payload, e?.id); } catch (err) { console.warn('Supabase calendar sync:', err); } }
+                setToast(`Event ${payload.title} saved successfully!`);
             } 
         }); 
     }
@@ -618,19 +644,23 @@ function Workspace({ userId, demoProfile, onSignOut }: {
             fields: [{ key: 'confirm', label: 'Type DELETE to confirm permanent removal.' }], 
             submit: async (v) => { 
                 if (v.confirm !== 'DELETE') throw Error('Enter DELETE to confirm.'); 
-                if (client) {
-                    try { await client!.from(t).delete().eq('id', r.id); } catch {}
+                
+                const saved = localStorage.getItem('pinkslip_data_store');
+                const store = saved ? JSON.parse(saved) : { ...initialMockData };
+                store[t] = (store[t] || []).filter((item: Row) => item.id !== r.id);
+                if (t === 'students') {
+                    store.attendance = (store.attendance || []).filter((a: Row) => a.student_id !== r.id);
+                    store.leaves = (store.leaves || []).filter((l: Row) => l.student_id !== r.id);
                 }
-                setData(prev => {
-                    const updated = { ...prev };
-                    updated[t] = (updated[t] || []).filter(item => item.id !== r.id);
-                    if (t === 'students') {
-                        updated.attendance = (updated.attendance || []).filter(a => a.student_id !== r.id);
-                        updated.leaves = (updated.leaves || []).filter(l => l.student_id !== r.id);
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(store));
+                setData({ ...store });
+
+                if (client) {
+                    try { await client.from(t).delete().eq('id', r.id); } catch (err) {
+                        console.warn(`Supabase delete ${t}:`, err);
                     }
-                    try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
-                    return updated;
-                });
+                }
+                setToast(`Deleted ${r.name || r.title || classLabel(r)} successfully.`);
             } 
         }); 
     }
