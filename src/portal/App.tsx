@@ -171,6 +171,9 @@ export default function App() {
         return <Login recovery={recovery} onRecovered={() => setRecovery(false)} onDemoLogin={(p) => { setDemoUser(p); localStorage.setItem('pinkslip_active_user', JSON.stringify(p)); }}/>;
     return <Workspace key={session.user.id} userId={session.user.id} onSignOut={() => { setDemoUser(null); localStorage.removeItem('pinkslip_active_user'); }}/>;
 }
+
+const MOCK_DATA_VERSION = 'v2-batches-2026-2023';
+
 function Workspace({ userId, demoProfile, onSignOut }: {
     userId: string;
     demoProfile?: Row;
@@ -179,6 +182,12 @@ function Workspace({ userId, demoProfile, onSignOut }: {
     const [data, setData] = useState<Data>(() => {
         if (demoProfile) {
             try {
+                const v = localStorage.getItem('pinkslip_data_version');
+                if (v !== MOCK_DATA_VERSION) {
+                    localStorage.setItem('pinkslip_data_version', MOCK_DATA_VERSION);
+                    localStorage.setItem('pinkslip_data_store', JSON.stringify(initialMockData));
+                    return initialMockData;
+                }
                 const saved = localStorage.getItem('pinkslip_data_store');
                 return saved ? JSON.parse(saved) : initialMockData;
             } catch {
@@ -195,6 +204,14 @@ function Workspace({ userId, demoProfile, onSignOut }: {
         if (demoProfile) {
             setProfile(demoProfile);
             try {
+                const v = localStorage.getItem('pinkslip_data_version');
+                if (v !== MOCK_DATA_VERSION) {
+                    localStorage.setItem('pinkslip_data_version', MOCK_DATA_VERSION);
+                    localStorage.setItem('pinkslip_data_store', JSON.stringify(initialMockData));
+                    setData(initialMockData);
+                    setLoading(false);
+                    return;
+                }
                 const saved = localStorage.getItem('pinkslip_data_store');
                 setData(saved ? JSON.parse(saved) : initialMockData);
             } catch {
@@ -265,17 +282,68 @@ function Workspace({ userId, demoProfile, onSignOut }: {
     } }
     const classOpts = options(rows('classes').filter(c => c.active), classLabel), deptOpts = options(rows('departments'), r => r.name);
     function editDepartment(d?: Row) { setEditor({ title: d ? 'Edit department' : 'Add department', fields: [{ key: 'name', label: 'Department name', value: d?.name }, { key: 'code', label: 'Department code', value: d?.code }], submit: v => save('departments', { name: v.name.trim(), code: v.code.trim() }, d?.id) }); }
-    function editClass(c?: Row) { setEditor({ title: c ? 'Edit class' : 'Add class', fields: [...(!c ? [{ key: 'department_id', label: 'Department', options: deptOpts, value: profile?.department_id }, { key: 'year', label: 'Current study year', type: 'number', min: 1, max: 12 }, { key: 'course_years', label: 'Course duration in years', type: 'number', min: 1, max: 12 }] : []), { key: 'section', label: 'Section name', value: c?.section }, { key: 'batch', label: 'Admission batch year', type: 'number', min: 1900, max: 2200, value: c?.batch }, { key: 'promotion_due', label: 'Next annual approval date', type: 'date', value: c?.promotion_due }, { key: 'advisor_id', label: 'Advisor (same department)', options: options(rows('profiles').filter(p => p.role === 'advisor' && p.active && (!c || p.department_id === c.department_id)), p => `${p.name} · ${find('departments', p.department_id)?.code || ''}`), required: false, value: c?.advisor_id }], submit: v => save('classes', { ...v, batch: Number(v.batch), advisor_id: v.advisor_id || null, ...(!c ? { year: Number(v.year), course_years: Number(v.course_years) } : {}) }, c?.id) }); }
-    function editStudent(s?: Row) { setEditor({ title: s ? 'Edit student' : 'Add student', fields: [{ key: 'class_id', label: 'Class', options: classOpts, value: s?.class_id }, { key: 'name', label: 'Full name', value: s?.name }, { key: 'register_number', label: 'Register number', value: s?.register_number }, { key: 'degree', label: 'Degree / course', value: s?.degree }, ...['phone', 'parent_name', 'parent_phone', 'email'].map(k => ({ key: k, label: ({ phone: 'Student phone', parent_name: 'Parent / guardian', parent_phone: 'Parent phone', email: 'Email' } as Record<string, string>)[k], value: s?.[k], required: false, type: k === 'email' ? 'email' : 'text' })), { key: 'user_id', label: 'Student login account', options: options(rows('profiles').filter(p => p.role === 'student' && p.active), p => `${p.name} · ${p.email}`), required: false, value: s?.user_id }], submit: v => save('students', { ...v, name: v.name.trim(), register_number: v.register_number.trim(), user_id: v.user_id || null }, s?.id) }); }
+    function editClass(c?: Row) { setEditor({ title: c ? 'Edit class' : 'Add class', fields: [...(!c ? [{ key: 'department_id', label: 'Department', options: deptOpts, value: profile?.department_id }, { key: 'year', label: 'Current study year', type: 'number', min: 1, max: 12 }, { key: 'course_years', label: 'Course duration in years', type: 'number', min: 1, max: 12 }] : []), { key: 'section', label: 'Section name', value: c?.section }, { key: 'batch', label: 'Admission batch year', type: 'number', min: 1900, max: 2200, value: c?.batch }, { key: 'promotion_due', label: 'Next annual approval date', type: 'date', value: c?.promotion_due }, { key: 'advisor_id', label: 'Advisor (same department)', options: options(rows('profiles').filter(p => p.role === 'advisor' && p.active && (!c || p.department_id === c.department_id)), p => `${p.name} · ${find('departments', p.department_id)?.code || ''}`), required: false, value: c?.advisor_id }], submit: async v => {
+        const payload = { ...v, batch: Number(v.batch), advisor_id: v.advisor_id || null, ...(!c ? { year: Number(v.year), course_years: Number(v.course_years) } : {}) };
+        if (client) {
+            await save('classes', payload, c?.id);
+        }
+        setData(prev => {
+            const updated = { ...prev };
+            const list = [...(updated.classes || [])];
+            if (c?.id) {
+                const idx = list.findIndex(item => item.id === c.id);
+                if (idx >= 0) list[idx] = { ...list[idx], ...payload };
+            } else {
+                list.push({ id: `class-${Date.now()}`, ...payload, active: true });
+            }
+            updated.classes = list;
+            try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+            return updated;
+        });
+    } }); }
+    function editStudent(s?: Row) { setEditor({ title: s ? 'Edit student' : 'Add student', fields: [{ key: 'class_id', label: 'Class', options: classOpts, value: s?.class_id }, { key: 'name', label: 'Full name', value: s?.name }, { key: 'register_number', label: 'Register number', value: s?.register_number }, { key: 'degree', label: 'Degree / course', value: s?.degree }, ...['phone', 'parent_name', 'parent_phone', 'email'].map(k => ({ key: k, label: ({ phone: 'Student phone', parent_name: 'Parent / guardian', parent_phone: 'Parent phone', email: 'Email' } as Record<string, string>)[k], value: s?.[k], required: false, type: k === 'email' ? 'email' : 'text' })), { key: 'user_id', label: 'Student login account', options: options(rows('profiles').filter(p => p.role === 'student' && p.active), p => `${p.name} · ${p.email}`), required: false, value: s?.user_id }], submit: async v => {
+        const payload = { ...v, name: v.name.trim(), register_number: v.register_number.trim(), user_id: v.user_id || null };
+        if (client) {
+            await save('students', payload, s?.id);
+        }
+        setData(prev => {
+            const updated = { ...prev };
+            const list = [...(updated.students || [])];
+            if (s?.id) {
+                const idx = list.findIndex(item => item.id === s.id);
+                if (idx >= 0) list[idx] = { ...list[idx], ...payload };
+            } else {
+                const newId = `s-${Date.now()}`;
+                list.push({ id: newId, ...payload, active: true });
+            }
+            updated.students = list;
+            try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+            return updated;
+        });
+    } }); }
     function editUser(u?: Row) { setEditor({ title: u ? 'Edit account' : 'Add account', fields: [{ key: 'name', label: 'Full name', value: u?.name }, { key: 'email', label: 'College email', type: 'email', value: u?.email, disabled: !!u }, { key: 'role', label: 'Role', options: (superAdmin ? ['super_admin', 'hod', 'advisor', 'student'] : ['advisor', 'student']).map(v => [v, v.replaceAll('_', ' ')]), value: u?.role }, { key: 'department_id', label: 'Department (optional for Super Admin)', options: deptOpts, value: u?.department_id ?? profile?.department_id, required: false }, ...(u ? [{ key: 'active', label: 'Account status', options: [['true', 'Active'], ['false', 'Disabled']] as [
                         string,
                         string
                     ][], value: String(u.active) }] : [{ key: 'password', label: 'Temporary password · 12+ characters', type: 'password' }])], submit: v => invoke('manage-user', { ...v, department_id: v.department_id || null, ...(u ? { id: u.id, active: v.active === 'true' } : {}) }) }); }
     function editEvent(e?: Row) { setEditor({ title: e ? 'Edit event' : 'Add event', fields: [{ key: 'department_id', label: 'Department', options: deptOpts, value: e?.department_id ?? profile?.department_id }, { key: 'title', label: 'Event title', value: e?.title }, { key: 'starts_at', label: 'Start date and time', type: 'datetime-local', value: e ? localDate(e.starts_at) : '' }, { key: 'ends_at', label: 'End date and time', type: 'datetime-local', value: e ? localDate(e.ends_at) : '' }], submit: async (v) => { if (v.ends_at <= v.starts_at)
             throw Error('End must follow start.'); await save('calendar_events', { ...v, starts_at: new Date(v.starts_at).toISOString(), ends_at: new Date(v.ends_at).toISOString(), ...(!e ? { id: `local-${crypto.randomUUID()}` } : {}) }, e?.id); } }); }
-    function remove(t: string, r: Row) { setEditor({ title: `Delete ${r.name || r.title || classLabel(r)}?`, fields: [{ key: 'confirm', label: 'Type DELETE to confirm. Linked history prevents deletion.' }], submit: async (v) => { if (v.confirm !== 'DELETE')
-            throw Error('Enter DELETE to confirm.'); const { error } = await client!.from(t).delete().eq('id', r.id); if (error)
-            throw error; } }); }
+    function remove(t: string, r: Row) { setEditor({ title: `Delete ${r.name || r.title || classLabel(r)}?`, fields: [{ key: 'confirm', label: 'Type DELETE to confirm permanent removal.' }], submit: async (v) => { 
+        if (v.confirm !== 'DELETE') throw Error('Enter DELETE to confirm.'); 
+        if (client) {
+            const { error } = await client!.from(t).delete().eq('id', r.id); 
+            if (error) throw error;
+        }
+        setData(prev => {
+            const updated = { ...prev };
+            updated[t] = (updated[t] || []).filter(item => item.id !== r.id);
+            if (t === 'students') {
+                updated.attendance = (updated.attendance || []).filter(a => a.student_id !== r.id);
+                updated.leaves = (updated.leaves || []).filter(l => l.student_id !== r.id);
+            }
+            try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+            return updated;
+        });
+    } }); }
     const pages: [
         string,
         typeof Users
@@ -297,7 +365,7 @@ function Workspace({ userId, demoProfile, onSignOut }: {
     const active = rows('students').filter(s => s.active);
     const total = rows('attendance').length, present = rows('attendance').filter(a => a.status === 'present').length;
     const risk = active.filter(s => { const a = stats(s.id); return a.total > 0 && a.present / a.total < .75; });
-    const studentRows = (list: Row[]) => list.map(s => { const a = stats(s.id); return [<button className="text-button" onClick={() => setDetail(s)}><strong>{s.name}</strong><small>{s.register_number}</small></button>, classLabel(find('classes', s.class_id)), a.total ? `${percentage(a.present, a.total)!.toFixed(1)}% (${a.present}/${a.total})` : 'Not marked', manager ? <button onClick={() => editStudent(s)}>Edit</button> : status(s.active ? 'active' : 'archived')]; });
+    const studentRows = (list: Row[]) => list.map(s => { const a = stats(s.id); return [<button className="text-button" onClick={() => setDetail(s)}><strong>{s.name}</strong><small>{s.register_number}</small></button>, classLabel(find('classes', s.class_id)), a.total ? `${percentage(a.present, a.total)!.toFixed(1)}% (${a.present}/${a.total})` : 'Not marked', manager ? <div className="actions"><button onClick={() => editStudent(s)}>Edit</button><button className="danger-button" onClick={() => remove('students', s)}>Delete</button></div> : status(s.active ? 'active' : 'archived')]; });
     return <div className="app-shell"><aside className={mobile ? 'sidebar open' : 'sidebar'}><div className="brand"><Building2 /> PinkSlipReport</div><div className="sidebar-caption">ACADEMIC WORKSPACE</div><nav>{pages.map(([p, Icon]) => <button key={p} className={page === p ? 'selected' : ''} aria-current={page === p ? 'page' : undefined} onClick={() => { setPage(p); setMobile(false); }}><Icon size={19}/>{p}{p === 'Notifications' && rows('notifications').some(n => !n.read_at) && <span className="dot"/>}</button>)}</nav><div className="account"><strong>{profile.name}</strong><small>{profile.role.replaceAll('_', ' ')}</small><button onClick={() => void action(async () => { if (onSignOut) onSignOut(); if (client) { try { await client.auth.signOut(); } catch {} } }, 'Signed out')}><LogOut size={17}/> Sign out</button></div></aside>{mobile && <button className="scrim" aria-label="Close navigation" onClick={() => setMobile(false)}/>}
  <div className="main-column"><header className="topbar"><button className="icon-button menu" aria-label="Open navigation" onClick={() => setMobile(!mobile)}><Menu /></button><span>{find('departments', profile.department_id)?.name || 'College administration'}</span><div><span className="small muted">{collegeDay()}</span><button className="icon-button" title="Refresh records" disabled={loading} onClick={() => void refresh()}><RefreshCw size={18} className={loading ? 'spinning' : ''}/></button></div></header><main className="workspace"><div className="page-heading"><div><span className="eyebrow">PINKSLIPREPORT / {profile.role.replaceAll('_', ' ')}</span><h1>{page}</h1><p className="muted">{page === 'Overview' ? 'Your academic day at a glance.' : 'College records, kept in sync across your devices.'}</p></div></div>{loading && <div className="loading-line" role="status">Refreshing records…</div>}
  {page === 'Overview' && <><section className="hero"><div><span className="eyebrow">WELCOME BACK</span><h2>Hello, {profile.name.split(' ')[0]}</h2><p>Every student. Every day. A shared picture of progress.</p></div><GraduationCap size={76}/></section><div className="metrics">{[['Active students', active.length], ['Recorded attendance', total ? `${percentage(present, total)!.toFixed(1)}%` : '—'], ['Pending pink slips', rows('leaves').filter(l => l.status === 'pending').length], ['Below 75%', risk.length]].map(([l, v]) => <div className="metric" key={l}><span>{l}</span><strong>{v}</strong><small>From your accessible records</small></div>)}</div>{manager && (!rows('departments').length || !rows('classes').length || !active.length) && <Panel title="Set up your college"><p>Add departments, create classes with your own year and section names, assign advisors, then add students. No roster is preloaded.</p><button className="primary" onClick={() => setPage('Administration')}>Open administration</button></Panel>}<div className="two-columns"><Panel title="Attendance by class">{rows('classes').filter(c => c.active).map(c => { const ids = new Set(active.filter(s => s.class_id === c.id).map(s => s.id)); const a = rows('attendance').filter(a => ids.has(a.student_id)); const rate = percentage(a.filter(a => a.status === 'present').length, a.length); return <div className="class-progress" key={c.id}><div><strong>{classLabel(c)}</strong><span>{rate === null ? 'No records' : `${rate.toFixed(1)}%`}</span></div><progress value={rate || 0} max={100}/></div>; })}{!rows('classes').length && <Empty>No classes have been added.</Empty>}<p className="small muted">Present days ÷ all marked days. Unmarked days are excluded.</p></Panel><Calculator /></div><Panel title="Students needing attention"><DataTable headers={['Student', 'Class', 'Attendance', 'Action']} rows={studentRows(risk)}/></Panel></>}
@@ -307,7 +375,79 @@ function Workspace({ userId, demoProfile, onSignOut }: {
             void action(async () => save('leaves', { letter_path: await upload(l.student_id, f) }, l.id)); }}/></label>}{manager && l.status === 'pending' && <><button disabled={busy} onClick={() => setEditor({ title: 'Review pink slip', fields: [{ key: 'decision_note', label: 'Decision remarks' }, { key: 'status', label: 'Decision', options: [['approved', 'Approve'], ['declined', 'Decline']] }], submit: v => save('leaves', v, l.id) })}>Review</button></>}</div>])}/></Panel>}
  {page === 'Calendar' && <Panel title="Academic calendar" action={manager ? <div className="actions"><button onClick={() => setEditor({ title: 'Import public Google Calendar', fields: [{ key: 'department_id', label: 'Department', options: deptOpts, value: profile.department_id }], submit: v => invoke('calendar-sync', v) })}>Import calendar</button><button className="primary" onClick={() => editEvent()}>Add event</button></div> : undefined}><DataTable headers={['Event', 'Starts', 'Ends', 'Actions']} rows={rows('calendar_events').slice().sort((a, b) => a.starts_at.localeCompare(b.starts_at)).map(e => [e.title, new Date(e.starts_at).toLocaleString(), new Date(e.ends_at).toLocaleString(), manager ? <div className="actions"><button onClick={() => editEvent(e)}>Edit</button><button onClick={() => remove('calendar_events', e)}>Delete</button></div> : null])}/></Panel>}
  {page === 'Notifications' && <Panel title="Your inbox"><DataTable headers={['Message', 'Received', 'Status']} rows={rows('notifications').slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).map(n => [n.message, new Date(n.created_at).toLocaleString(), n.read_at ? status('read') : <button disabled={busy} onClick={() => void action(() => save('notifications', { read_at: new Date().toISOString() }, n.id))}>Mark read</button>])}/></Panel>}
- {page === 'Progression' && !student && <><Panel title="Annual progression"><DataTable headers={['Class', 'Approval due', 'Next step', 'Action']} rows={rows('classes').filter(c => c.active).map(c => [classLabel(c), c.promotion_due, c.year === c.course_years ? 'Complete course' : `Year ${c.year + 1}`, <button disabled={busy || c.promotion_due > collegeDay() || rows('promotions').some(p => p.class_id === c.id && p.status === 'pending')} onClick={() => void action(() => rpc('request_promotion', { p_class: c.id }))}>Request approval</button>])}/></Panel><Panel title="Approval requests"><DataTable headers={['Class', 'From year', 'Status', 'Actions']} rows={rows('promotions').map(p => [classLabel(find('classes', p.class_id)), p.from_year, status(p.status), manager && p.status === 'pending' ? <div className="actions"><button disabled={busy} onClick={() => void action(() => rpc('review_promotion', { p_id: p.id, p_approve: true }))}>Approve</button><button disabled={busy} onClick={() => void action(() => rpc('review_promotion', { p_id: p.id, p_approve: false }))}>Decline</button></div> : null])}/></Panel></>}
+ {page === 'Progression' && !student && <><Panel title="Annual progression & Batch advancement"><p className="muted">Promote classes to the next academic year (Year 1 → Year 2 → Year 3 → Year 4). HOD approval advances study year while preserving original admission batches.</p><DataTable headers={['Class', 'Admission batch', 'Approval due', 'Next step', 'Action']} rows={rows('classes').filter(c => c.active).map(c => [classLabel(c), <strong>{c.batch} batch</strong>, c.promotion_due, c.year === c.course_years ? 'Complete course (Graduation)' : `Advance to Year ${c.year + 1} (${c.batch} batch)`, manager ? <div className="actions"><button className="primary" disabled={busy} onClick={() => void action(async () => {
+    if (client) { await rpc('request_promotion', { p_class: c.id }); }
+    setData(prev => {
+        const updated = { ...prev };
+        const classes = [...(updated.classes || [])];
+        const idx = classes.findIndex(item => item.id === c.id);
+        if (idx >= 0) {
+            const cls = { ...classes[idx] };
+            if (cls.year < cls.course_years) {
+                cls.year += 1;
+                cls.promotion_due = '2028-06-30';
+            } else {
+                cls.active = false;
+            }
+            classes[idx] = cls;
+            updated.classes = classes;
+        }
+        const promos = [...(updated.promotions || [])];
+        promos.push({ id: `promo-${Date.now()}`, class_id: c.id, from_year: c.year, status: 'approved', created_at: new Date().toISOString() });
+        updated.promotions = promos;
+        try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+        return updated;
+    });
+}, `${classLabel(c)} promoted successfully`)}>{c.year === c.course_years ? 'Graduate Class' : `Promote to Year ${c.year + 1}`}</button></div> : <button disabled={busy || rows('promotions').some(p => p.class_id === c.id && p.status === 'pending')} onClick={() => void action(async () => {
+    if (client) { await rpc('request_promotion', { p_class: c.id }); }
+    setData(prev => {
+        const updated = { ...prev };
+        const promos = [...(updated.promotions || [])];
+        promos.push({ id: `promo-${Date.now()}`, class_id: c.id, from_year: c.year, status: 'pending', created_at: new Date().toISOString() });
+        updated.promotions = promos;
+        try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+        return updated;
+    });
+}, 'Promotion request sent to HOD')}>Request approval</button>])}/></Panel><Panel title="Approval requests"><DataTable headers={['Class', 'From year', 'Status', 'Actions']} rows={rows('promotions').map(p => [classLabel(find('classes', p.class_id)), `Year ${p.from_year}`, status(p.status), manager && p.status === 'pending' ? <div className="actions"><button className="primary" disabled={busy} onClick={() => void action(async () => {
+    if (client) { await rpc('review_promotion', { p_id: p.id, p_approve: true }); }
+    setData(prev => {
+        const updated = { ...prev };
+        const promos = [...(updated.promotions || [])];
+        const pIdx = promos.findIndex(item => item.id === p.id);
+        if (pIdx >= 0) {
+            promos[pIdx] = { ...promos[pIdx], status: 'approved' };
+            updated.promotions = promos;
+        }
+        const classes = [...(updated.classes || [])];
+        const cIdx = classes.findIndex(item => item.id === p.class_id);
+        if (cIdx >= 0) {
+            const cls = { ...classes[cIdx] };
+            if (cls.year < cls.course_years) {
+                cls.year += 1;
+                cls.promotion_due = '2028-06-30';
+            } else {
+                cls.active = false;
+            }
+            classes[cIdx] = cls;
+            updated.classes = classes;
+        }
+        try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+        return updated;
+    });
+}, 'Promotion approved')}>Approve</button><button disabled={busy} onClick={() => void action(async () => {
+    if (client) { await rpc('review_promotion', { p_id: p.id, p_approve: false }); }
+    setData(prev => {
+        const updated = { ...prev };
+        const promos = [...(updated.promotions || [])];
+        const pIdx = promos.findIndex(item => item.id === p.id);
+        if (pIdx >= 0) {
+            promos[pIdx] = { ...promos[pIdx], status: 'declined' };
+            updated.promotions = promos;
+        }
+        try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+        return updated;
+    });
+}, 'Promotion declined')}>Decline</button></div> : null])}/></Panel></>}
  {page === 'Administration' && manager && <><Panel title="Departments" action={superAdmin ? <button className="primary" onClick={() => editDepartment()}>Add department</button> : undefined}><DataTable headers={['Department', 'Code', 'Actions']} rows={rows('departments').map(d => [d.name, d.code, superAdmin ? <div className="actions"><button onClick={() => editDepartment(d)}>Edit</button><button onClick={() => remove('departments', d)}>Delete</button></div> : null])}/></Panel><Panel title="Classes & advisor assignments" action={<button className="primary" onClick={() => editClass()}>Add class</button>}><DataTable headers={['Class', 'Department', 'Advisor', 'Status', 'Actions']} rows={rows('classes').map(c => [classLabel(c), find('departments', c.department_id)?.name, find('profiles', c.advisor_id)?.name || 'Unassigned', status(c.active ? 'active' : 'completed'), <div className="actions"><button onClick={() => editClass(c)}>Edit</button><button onClick={() => remove('classes', c)}>Delete</button></div>])}/></Panel><Panel title="Accounts" action={<button className="primary" onClick={() => editUser()}>Add account</button>}><DataTable headers={['Name', 'Email', 'Role', 'Status', 'Actions']} rows={rows('profiles').map(p => [p.name, p.email, p.role.replaceAll('_', ' '), status(p.active ? 'active' : 'disabled'), superAdmin || ['advisor', 'student'].includes(p.role) ? <button onClick={() => editUser(p)}>Edit</button> : null])}/></Panel></>}
  {page === 'Audit trail' && superAdmin && <Panel title="Protected audit trail"><DataTable headers={['Time', 'Actor', 'Operation', 'Record']} rows={rows('audit_logs').slice().sort((a, b) => Number(b.id) - Number(a.id)).map(l => [new Date(l.created_at).toLocaleString(), find('profiles', l.actor)?.name || l.actor || 'System', `${l.operation} · ${l.entity}`, <details><summary>View change</summary><pre>{JSON.stringify({ before: l.before_data, after: l.after_data }, null, 2)}</pre></details>])}/></Panel>}
  {['Timetable', 'Notices'].includes(page) && <AcademicContent page={page} data={data} manager={manager} editor={setEditor} remove={remove}/>}
