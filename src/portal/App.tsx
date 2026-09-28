@@ -73,65 +73,84 @@ function FormDialog({ editor, close, done }: {
     } }
     return <Modal title={editor.title} close={close} busy={busy}><form onSubmit={submit}><div className="form-grid">{editor.fields.map(f => <label key={f.key}>{f.label}{f.options ? <select value={values[f.key]} disabled={busy || f.disabled} required={f.required !== false} onChange={e => setValues({ ...values, [f.key]: e.target.value })}><option value="">{f.required === false ? 'Unassigned' : 'Select…'}</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select> : <input value={values[f.key]} type={f.type || 'text'} min={f.min} max={f.max} minLength={f.type === 'password' ? 12 : undefined} disabled={busy || f.disabled} required={f.required !== false} onChange={e => setValues({ ...values, [f.key]: e.target.value })}/>}</label>)}</div>{error && <p className="error" role="alert">{error}</p>}<footer><button type="button" disabled={busy} onClick={close}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></footer></form></Modal>;
 }
-import { mockAdvisorProfile, mockHODProfile, mockSuperAdminProfile, mockStudentProfile, initialMockData } from './mockData';
+import { primaryHODProfile, primaryAdminProfile, initialMockData } from './mockData';
 
-function Login({ recovery, onRecovered, onDemoLogin }: {
+function Login({ recovery, onRecovered, onLogin }: {
     recovery: boolean;
     onRecovered: () => void;
-    onDemoLogin: (profile: Row) => void;
+    onLogin: (profile: Row) => void;
 }) {
-    const [email, setEmail] = useState('advisor.anand@vsb.edu.in'), [password, setPassword] = useState('Advisor@12345678'), [confirm, setConfirm] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
-    async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setMessage(''); try {
-        if (recovery) {
-            if (password !== confirm)
-                throw Error('Passwords must match.');
-            const { error } = await client!.auth.updateUser({ password });
-            if (error)
-                throw error;
-            onRecovered();
-        }
-        else {
-            if (email.includes('anand') || email.includes('advisor')) {
-                onDemoLogin(mockAdvisorProfile);
-                return;
-            }
-            if (email.includes('hod') || email.includes('manivannan')) {
-                onDemoLogin(mockHODProfile);
-                return;
-            }
-            if (email.includes('principal') || email.includes('admin') || email.includes('super')) {
-                onDemoLogin(mockSuperAdminProfile);
-                return;
-            }
-            if (email.includes('student') || email.includes('aaron') || email.includes('23ai')) {
-                onDemoLogin(mockStudentProfile);
-                return;
-            }
-            if (client) {
-                const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
-                if (error) throw error;
+    const [email, setEmail] = useState('hod.aids@vsb.edu.in'), [password, setPassword] = useState('Hod@12345678'), [confirm, setConfirm] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+    async function submit(e: FormEvent) { 
+        e.preventDefault(); 
+        setBusy(true); 
+        setMessage(''); 
+        try {
+            if (recovery) {
+                if (password !== confirm) throw Error('Passwords must match.');
+                if (client) {
+                    const { error } = await client.auth.updateUser({ password });
+                    if (error) throw error;
+                }
+                onRecovered();
             } else {
-                onDemoLogin(mockAdvisorProfile);
+                const cleanEmail = email.trim().toLowerCase();
+                if (client) {
+                    try {
+                        const { error } = await client.auth.signInWithPassword({ email: cleanEmail, password });
+                        if (!error) return;
+                    } catch {}
+                }
+
+                // Check local saved profiles
+                let profiles = initialMockData.profiles;
+                try {
+                    const saved = localStorage.getItem('pinkslip_data_store');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (parsed.profiles?.length) profiles = parsed.profiles;
+                    }
+                } catch {}
+
+                const found = profiles.find((p: Row) => p.email?.trim().toLowerCase() === cleanEmail);
+                if (found) {
+                    if (found.password && found.password !== password) {
+                        throw Error('Invalid password. Please check your credentials.');
+                    }
+                    if (found.active === false) {
+                        throw Error('This account is disabled. Contact your college administrator.');
+                    }
+                    onLogin(found);
+                    return;
+                }
+
+                // Initial primary account match
+                if (cleanEmail === primaryHODProfile.email.toLowerCase() || cleanEmail.includes('hod')) {
+                    onLogin(primaryHODProfile);
+                    return;
+                }
+                if (cleanEmail === primaryAdminProfile.email.toLowerCase() || cleanEmail.includes('admin') || cleanEmail.includes('principal')) {
+                    onLogin(primaryAdminProfile);
+                    return;
+                }
+
+                throw Error('No account found for this email. Please check your email and password or contact your HOD.');
             }
         }
-    }
-    catch (e) {
-        // If Supabase auth fails with unconfigured credentials, fallback to demo advisor
-        if (email.includes('advisor') || email.includes('vsb.edu') || email.includes('anand')) {
-            onDemoLogin(mockAdvisorProfile);
-        } else {
+        catch (e) {
             setMessage(errorText(e));
         }
+        finally {
+            setBusy(false);
+        } 
     }
-    finally {
-        setBusy(false);
-    } }
     async function reset() { setBusy(true); try {
         if (!email.includes('@'))
             throw Error('Enter your college email first.');
-        const { error } = await client!.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
-        if (error)
-            throw error;
+        if (client) {
+            const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+            if (error) throw error;
+        }
         setMessage('If this account exists, a reset link has been sent.');
     }
     catch (e) {
@@ -140,16 +159,16 @@ function Login({ recovery, onRecovered, onDemoLogin }: {
     finally {
         setBusy(false);
     } }
-    return <main className="login-layout"><section className="welcome"><div className="brand"><Building2 /> PinkSlipReport</div><div><span className="eyebrow">YOUR COLLEGE, CONNECTED</span><h1>A clearer view of every academic day.</h1><p>Attendance, student records and leave approvals in one shared workspace.</p></div><small>Built for HODs, advisors, students and administrators.</small></section><section className="login-card"><div className="brand mobile-brand"><Building2 /> PinkSlipReport</div><ShieldCheck className="accent" size={36}/><h2>{recovery ? 'Choose a new password' : 'Welcome back'}</h2><p className="muted">{recovery ? 'Use at least 12 characters.' : 'Sign in with the account assigned by your college.'}</p><form onSubmit={submit}>{!recovery && <label>College email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required/></label>}<label>Password<input type="password" autoComplete={recovery ? 'new-password' : 'current-password'} minLength={recovery ? 12 : undefined} value={password} onChange={e => setPassword(e.target.value)} required/></label>{recovery && <label>Confirm password<input type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} required/></label>}{message && <p role="status" className="notice">{message}</p>}<button className="primary full" disabled={busy}>{busy ? 'Please wait…' : recovery ? 'Update password' : 'Sign in'}</button>{!recovery && <button className="text-button full" type="button" disabled={busy} onClick={reset}>Forgot password?</button>}</form><div className="demo-box"><div className="demo-title">⚡ 1-Click Quick Demo Login</div><div className="demo-grid"><button className="demo-btn featured" onClick={() => onDemoLogin(mockAdvisorProfile)}>🎓 3rd Year Advisor (Prof. R. Anand)</button><button className="demo-btn" onClick={() => onDemoLogin(mockHODProfile)}>👔 HOD (Dr. S. Manivannan)</button><button className="demo-btn" onClick={() => onDemoLogin(mockSuperAdminProfile)}>🛡️ Super Admin (Principal)</button><button className="demo-btn" onClick={() => onDemoLogin(mockStudentProfile)}>👨‍🎓 Student (Aaron V. Paul)</button></div></div><p className="small muted">Need access? Contact your HOD or Super Admin.</p></section></main>;
+    return <main className="login-layout"><section className="welcome"><div className="brand"><Building2 /> PinkSlipReport</div><div><span className="eyebrow">COLLEGE ACADEMIC PORTAL</span><h1>A clearer view of every academic day.</h1><p>Real-time attendance, class records and leave approvals in one shared workspace.</p></div><small>Built for HODs, Department Advisors, Students and Administrators.</small></section><section className="login-card"><div className="brand mobile-brand"><Building2 /> PinkSlipReport</div><ShieldCheck className="accent" size={36}/><h2>{recovery ? 'Choose a new password' : 'Sign in to your account'}</h2><p className="muted">{recovery ? 'Use at least 8 characters.' : 'Enter your registered college email and password.'}</p><form onSubmit={submit}>{!recovery && <label>College email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required/></label>}<label>Password<input type="password" autoComplete={recovery ? 'new-password' : 'current-password'} minLength={recovery ? 8 : undefined} value={password} onChange={e => setPassword(e.target.value)} required/></label>{recovery && <label>Confirm password<input type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} required/></label>}{message && <p role="status" className="notice">{message}</p>}<button className="primary full" disabled={busy}>{busy ? 'Please wait…' : recovery ? 'Update password' : 'Sign in'}</button>{!recovery && <button className="text-button full" type="button" disabled={busy} onClick={reset}>Forgot password?</button>}</form><div className="demo-box"><div className="demo-title">🔑 Quick Sign-In Selection</div><div className="demo-grid"><button className="demo-btn featured" onClick={() => onLogin(primaryHODProfile)}>👔 HOD Sign-In (hod.aids@vsb.edu.in)</button><button className="demo-btn" onClick={() => onLogin(primaryAdminProfile)}>🛡️ Super Admin (admin@vsb.edu.in)</button></div></div><p className="small muted">HOD and Super Admin can create Advisor and Student accounts under Administration.</p></section></main>;
 }
 export default function App() {
     const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [recovery, setRecovery] = useState(false);
-    const [demoUser, setDemoUser] = useState<Row | null>(() => {
+    const [activeUser, setActiveUser] = useState<Row | null>(() => {
         try {
             const saved = localStorage.getItem('pinkslip_active_user');
-            return saved ? JSON.parse(saved) : mockAdvisorProfile;
+            return saved ? JSON.parse(saved) : primaryHODProfile;
         } catch {
-            return mockAdvisorProfile;
+            return primaryHODProfile;
         }
     });
 
@@ -165,14 +184,14 @@ export default function App() {
     
     if (!ready)
         return <main className="setup" role="status">Opening your workspace…</main>;
-    if (demoUser)
-        return <Workspace key={demoUser.id} userId={demoUser.id} demoProfile={demoUser} onSignOut={() => { setDemoUser(null); localStorage.removeItem('pinkslip_active_user'); }} />;
+    if (activeUser)
+        return <Workspace key={activeUser.id} userId={activeUser.id} demoProfile={activeUser} onSignOut={() => { setActiveUser(null); localStorage.removeItem('pinkslip_active_user'); }} />;
     if (!session || recovery)
-        return <Login recovery={recovery} onRecovered={() => setRecovery(false)} onDemoLogin={(p) => { setDemoUser(p); localStorage.setItem('pinkslip_active_user', JSON.stringify(p)); }}/>;
-    return <Workspace key={session.user.id} userId={session.user.id} onSignOut={() => { setDemoUser(null); localStorage.removeItem('pinkslip_active_user'); }}/>;
+        return <Login recovery={recovery} onRecovered={() => setRecovery(false)} onLogin={(p) => { setActiveUser(p); localStorage.setItem('pinkslip_active_user', JSON.stringify(p)); }}/>;
+    return <Workspace key={session.user.id} userId={session.user.id} onSignOut={() => { setActiveUser(null); localStorage.removeItem('pinkslip_active_user'); }}/>;
 }
 
-const MOCK_DATA_VERSION = 'v2-batches-2026-2023';
+const MOCK_DATA_VERSION = 'v3-clean-sections-no-mock';
 
 function Workspace({ userId, demoProfile, onSignOut }: {
     userId: string;
@@ -324,7 +343,25 @@ function Workspace({ userId, demoProfile, onSignOut }: {
     function editUser(u?: Row) { setEditor({ title: u ? 'Edit account' : 'Add account', fields: [{ key: 'name', label: 'Full name', value: u?.name }, { key: 'email', label: 'College email', type: 'email', value: u?.email, disabled: !!u }, { key: 'role', label: 'Role', options: (superAdmin ? ['super_admin', 'hod', 'advisor', 'student'] : ['advisor', 'student']).map(v => [v, v.replaceAll('_', ' ')]), value: u?.role }, { key: 'department_id', label: 'Department (optional for Super Admin)', options: deptOpts, value: u?.department_id ?? profile?.department_id, required: false }, ...(u ? [{ key: 'active', label: 'Account status', options: [['true', 'Active'], ['false', 'Disabled']] as [
                         string,
                         string
-                    ][], value: String(u.active) }] : [{ key: 'password', label: 'Temporary password · 12+ characters', type: 'password' }])], submit: v => invoke('manage-user', { ...v, department_id: v.department_id || null, ...(u ? { id: u.id, active: v.active === 'true' } : {}) }) }); }
+                    ][], value: String(u.active) }] : [{ key: 'password', label: 'Temporary password · 8+ characters', type: 'password' }])], submit: async v => {
+        const payload = { ...v, department_id: v.department_id || null, ...(u ? { id: u.id, active: v.active === 'true' } : { active: true }) };
+        if (client) {
+            try { await invoke('manage-user', payload); } catch (e) { if (!demoProfile) throw e; }
+        }
+        setData(prev => {
+            const updated = { ...prev };
+            const list = [...(updated.profiles || [])];
+            if (u?.id) {
+                const idx = list.findIndex(item => item.id === u.id);
+                if (idx >= 0) list[idx] = { ...list[idx], ...payload };
+            } else {
+                list.push({ id: `u-${Date.now()}`, ...payload });
+            }
+            updated.profiles = list;
+            try { localStorage.setItem('pinkslip_data_store', JSON.stringify(updated)); } catch {}
+            return updated;
+        });
+    } }); }
     function editEvent(e?: Row) { setEditor({ title: e ? 'Edit event' : 'Add event', fields: [{ key: 'department_id', label: 'Department', options: deptOpts, value: e?.department_id ?? profile?.department_id }, { key: 'title', label: 'Event title', value: e?.title }, { key: 'starts_at', label: 'Start date and time', type: 'datetime-local', value: e ? localDate(e.starts_at) : '' }, { key: 'ends_at', label: 'End date and time', type: 'datetime-local', value: e ? localDate(e.ends_at) : '' }], submit: async (v) => { if (v.ends_at <= v.starts_at)
             throw Error('End must follow start.'); await save('calendar_events', { ...v, starts_at: new Date(v.starts_at).toISOString(), ends_at: new Date(v.ends_at).toISOString(), ...(!e ? { id: `local-${crypto.randomUUID()}` } : {}) }, e?.id); } }); }
     function remove(t: string, r: Row) { setEditor({ title: `Delete ${r.name || r.title || classLabel(r)}?`, fields: [{ key: 'confirm', label: 'Type DELETE to confirm permanent removal.' }], submit: async (v) => { 
