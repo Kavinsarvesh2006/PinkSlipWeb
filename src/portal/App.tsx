@@ -80,7 +80,7 @@ function Login({ recovery, onRecovered, onLogin }: {
     onRecovered: () => void;
     onLogin: (profile: Row) => void;
 }) {
-    const [email, setEmail] = useState('hod.aids@vsb.edu.in'), [password, setPassword] = useState('Hod@12345678'), [confirm, setConfirm] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+    const [email, setEmail] = useState('hod.manivannan@vsb.edu.in'), [password, setPassword] = useState('Hod@12345678'), [confirm, setConfirm] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
     async function submit(e: FormEvent) { 
         e.preventDefault(); 
         setBusy(true); 
@@ -125,7 +125,7 @@ function Login({ recovery, onRecovered, onLogin }: {
                 }
 
                 // Initial primary account match
-                if (cleanEmail === primaryHODProfile.email.toLowerCase() || cleanEmail.includes('hod')) {
+                if (cleanEmail === primaryHODProfile.email.toLowerCase() || cleanEmail.includes('hod') || cleanEmail.includes('manivannan')) {
                     onLogin(primaryHODProfile);
                     return;
                 }
@@ -159,12 +159,19 @@ function Login({ recovery, onRecovered, onLogin }: {
     finally {
         setBusy(false);
     } }
-    return <main className="login-layout"><section className="welcome"><div className="brand"><Building2 /> PinkSlipReport</div><div><span className="eyebrow">COLLEGE ACADEMIC PORTAL</span><h1>A clearer view of every academic day.</h1><p>Real-time attendance, class records and leave approvals in one shared workspace.</p></div><small>Built for HODs, Department Advisors, Students and Administrators.</small></section><section className="login-card"><div className="brand mobile-brand"><Building2 /> PinkSlipReport</div><ShieldCheck className="accent" size={36}/><h2>{recovery ? 'Choose a new password' : 'Sign in to your account'}</h2><p className="muted">{recovery ? 'Use at least 8 characters.' : 'Enter your registered college email and password.'}</p><form onSubmit={submit}>{!recovery && <label>College email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required/></label>}<label>Password<input type="password" autoComplete={recovery ? 'new-password' : 'current-password'} minLength={recovery ? 8 : undefined} value={password} onChange={e => setPassword(e.target.value)} required/></label>{recovery && <label>Confirm password<input type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} required/></label>}{message && <p role="status" className="notice">{message}</p>}<button className="primary full" disabled={busy}>{busy ? 'Please wait…' : recovery ? 'Update password' : 'Sign in'}</button>{!recovery && <button className="text-button full" type="button" disabled={busy} onClick={reset}>Forgot password?</button>}</form><div className="demo-box"><div className="demo-title">🔑 Quick Sign-In Selection</div><div className="demo-grid"><button className="demo-btn featured" onClick={() => onLogin(primaryHODProfile)}>👔 HOD Sign-In (hod.aids@vsb.edu.in)</button><button className="demo-btn" onClick={() => onLogin(primaryAdminProfile)}>🛡️ Super Admin (admin@vsb.edu.in)</button></div></div><p className="small muted">HOD and Super Admin can create Advisor and Student accounts under Administration.</p></section></main>;
+    return <main className="login-layout"><section className="welcome"><div className="brand"><Building2 /> PinkSlipReport</div><div><span className="eyebrow">COLLEGE ACADEMIC PORTAL</span><h1>A clearer view of every academic day.</h1><p>Real-time attendance, class records and leave approvals in one shared workspace.</p></div><small>Built for HODs, Department Advisors, Students and Administrators.</small></section><section className="login-card"><div className="brand mobile-brand"><Building2 /> PinkSlipReport</div><ShieldCheck className="accent" size={36}/><h2>{recovery ? 'Choose a new password' : 'Sign in to your account'}</h2><p className="muted">{recovery ? 'Use at least 8 characters.' : 'Enter your registered college email and password.'}</p><form onSubmit={submit}>{!recovery && <label>College email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required/></label>}<label>Password<input type="password" autoComplete={recovery ? 'new-password' : 'current-password'} minLength={recovery ? 8 : undefined} value={password} onChange={e => setPassword(e.target.value)} required/></label>{recovery && <label>Confirm password<input type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} required/></label>}{message && <p role="status" className="notice">{message}</p>}<button className="primary full" disabled={busy}>{busy ? 'Please wait…' : recovery ? 'Update password' : 'Sign in'}</button>{!recovery && <button className="text-button full" type="button" disabled={busy} onClick={reset}>Forgot password?</button>}</form><div className="demo-box"><div className="demo-title">🔑 Quick Sign-In Selection</div><div className="demo-grid"><button className="demo-btn featured" onClick={() => onLogin(primaryHODProfile)}>👔 HOD Sign-In (Dr. K. Manivannan)</button><button className="demo-btn" onClick={() => onLogin(primaryAdminProfile)}>🛡️ Super Admin (admin@vsb.edu.in)</button></div></div><p className="small muted">HOD and Super Admin can create Advisor and Student accounts under Administration.</p></section></main>;
 }
 export default function App() {
     const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [recovery, setRecovery] = useState(false);
     const [activeUser, setActiveUser] = useState<Row | null>(() => {
         try {
+            const v = localStorage.getItem('pinkslip_data_version');
+            if (v !== 'v4-hod-k-manivannan') {
+                localStorage.setItem('pinkslip_data_version', 'v4-hod-k-manivannan');
+                localStorage.setItem('pinkslip_data_store', JSON.stringify(initialMockData));
+                localStorage.setItem('pinkslip_active_user', JSON.stringify(primaryHODProfile));
+                return primaryHODProfile;
+            }
             const saved = localStorage.getItem('pinkslip_active_user');
             return saved ? JSON.parse(saved) : primaryHODProfile;
         } catch {
@@ -191,7 +198,7 @@ export default function App() {
     return <Workspace key={session.user.id} userId={session.user.id} onSignOut={() => { setActiveUser(null); localStorage.removeItem('pinkslip_active_user'); }}/>;
 }
 
-const MOCK_DATA_VERSION = 'v3-clean-sections-no-mock';
+const MOCK_DATA_VERSION = 'v4-hod-k-manivannan';
 
 function Workspace({ userId, demoProfile, onSignOut }: {
     userId: string;

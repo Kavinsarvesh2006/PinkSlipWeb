@@ -2,8 +2,8 @@ import type { Row, Data } from './api';
 
 export const primaryHODProfile: Row = {
   id: 'u-hod-aids',
-  name: 'Head of Department',
-  email: 'hod.aids@vsb.edu.in',
+  name: 'Dr. K. Manivannan',
+  email: 'hod.manivannan@vsb.edu.in',
   role: 'hod',
   department_id: 'dept-aids',
   active: true,
