@@ -1,4 +1,5 @@
 import type { Row, Data } from './api';
+import thirdYearStudents from './students3rdYear.json';
 
 export const primaryHODProfile: Row = {
   id: 'u-hod-aids',
@@ -18,6 +19,46 @@ export const primaryAdminProfile: Row = {
   department_id: null,
   active: true,
   password: 'Admin@12345678',
+};
+
+export const advisor3A: Row = {
+  id: 'u-adv-3a',
+  name: 'Ms. C. Vishnupriya',
+  email: 'advisor.vishnupriya@vsb.edu.in',
+  role: 'advisor',
+  department_id: 'dept-aids',
+  active: true,
+  password: 'Advisor@123',
+};
+
+export const advisor3B: Row = {
+  id: 'u-adv-3b',
+  name: 'Dr. R. Murugesan',
+  email: 'advisor.murugesan@vsb.edu.in',
+  role: 'advisor',
+  department_id: 'dept-aids',
+  active: true,
+  password: 'Advisor@123',
+};
+
+export const advisor3C: Row = {
+  id: 'u-adv-3c',
+  name: 'Mrs. B. Bharathi',
+  email: 'advisor.bharathi@vsb.edu.in',
+  role: 'advisor',
+  department_id: 'dept-aids',
+  active: true,
+  password: 'Advisor@123',
+};
+
+export const advisor3D: Row = {
+  id: 'u-adv-3d',
+  name: 'Mr. V. Velusamy',
+  email: 'advisor.velusamy@vsb.edu.in',
+  role: 'advisor',
+  department_id: 'dept-aids',
+  active: true,
+  password: 'Advisor@123',
 };
 
 export const initialMockData: Data = {
@@ -41,6 +82,10 @@ export const initialMockData: Data = {
   profiles: [
     primaryHODProfile,
     primaryAdminProfile,
+    advisor3A,
+    advisor3B,
+    advisor3C,
+    advisor3D,
   ],
   classes: [
     // Year 1 (2026 Batch) - 4 Sections: A, B, C, D
@@ -135,7 +180,7 @@ export const initialMockData: Data = {
       active: true,
     },
 
-    // Year 3 (2024 Batch) - 4 Sections: A, B, C, D
+    // Year 3 (2024 Batch) - 4 Sections: A, B, C, D with respective Advisors
     {
       id: 'class-3a',
       department_id: 'dept-aids',
@@ -144,7 +189,7 @@ export const initialMockData: Data = {
       section: 'A',
       batch: 2024,
       promotion_due: '2027-06-30',
-      advisor_id: null,
+      advisor_id: 'u-adv-3a',
       active: true,
     },
     {
@@ -155,7 +200,7 @@ export const initialMockData: Data = {
       section: 'B',
       batch: 2024,
       promotion_due: '2027-06-30',
-      advisor_id: null,
+      advisor_id: 'u-adv-3b',
       active: true,
     },
     {
@@ -166,7 +211,7 @@ export const initialMockData: Data = {
       section: 'C',
       batch: 2024,
       promotion_due: '2027-06-30',
-      advisor_id: null,
+      advisor_id: 'u-adv-3c',
       active: true,
     },
     {
@@ -177,7 +222,7 @@ export const initialMockData: Data = {
       section: 'D',
       batch: 2024,
       promotion_due: '2027-06-30',
-      advisor_id: null,
+      advisor_id: 'u-adv-3d',
       active: true,
     },
 
@@ -205,7 +250,7 @@ export const initialMockData: Data = {
       active: true,
     },
   ],
-  students: [],
+  students: thirdYearStudents as Row[],
   attendance: [],
   leaves: [],
   calendar_events: [],
