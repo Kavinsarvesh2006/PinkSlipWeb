@@ -1,0 +1,11 @@
+project_id = "pinkslipreport"
+
+[auth]
+enable_signup = false
+minimum_password_length = 12
+
+[functions.manage-user]
+verify_jwt = false
+
+[functions.calendar-sync]
+verify_jwt = false
